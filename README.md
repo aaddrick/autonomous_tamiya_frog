@@ -1,7 +1,10 @@
 # autonomous_tamiya_frog
 Autonomizing a Tamiya Frog using Arduino
 
-
+We're modifying a Tamiya Frog RC card which uses a Tamiya TEU-101BK ESC
+The Frog was introduced in 1983, back when everything RC was servo driven,
+or accepted servo wiring for inputs. It's essentially two servos for control
+purposes.
 
 TODO Clean up this README with proper markdown...
 
@@ -24,3 +27,5 @@ Throttle and steering control:
     4a. servo_time is updated to the current millis()
     4b. action is executed
   5. Return to step 2.
+
+// ascii banners from http://patorjk.com/

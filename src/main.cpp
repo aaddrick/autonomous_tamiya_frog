@@ -1,13 +1,4 @@
-/*
-We're modifying a Tamiya Frog RC card which uses a Tamiya TEU-101BK ESC
-The Frog was introduced in 1983, back when everything RC was servo driven,
-or accepted servo wiring for inputs. It's essentially two servos for control
-purposes.
-*/
-
 #include <Servo.h> // include the arduino servo library.
-
-// ascii banners from http://patorjk.com/
 
 /*
 ██╗   ██╗ █████╗ ██████╗ ██╗ █████╗ ██████╗ ██╗     ███████╗    ██████╗ ███████╗ ██████╗██╗      █████╗ ██████╗  █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
@@ -27,18 +18,15 @@ Servo throttle; // for the Servo library, defining a throttle servo
 const byte steeringPin = 8;
 const int steeringMin = 1000; // the pulse width, in microseconds, corresponding to the minimum (0-degree) angle on the steering servo (defaults to 544)
 const int steeringMax = 2000; // the pulse width, in microseconds, corresponding to the maximum (180-degree) angle on the steering servo (defaults to 2400)
+const int steering_speed = 25; // minimum number of milliseconds before evaluating the next steering step
+int steering_step = 3;  // how many degrees we turn each steering cycle
+byte steering_pos = 90;  // desired angle for steering
 
 const byte throttlePin = 9;
 const int throttleMin = 1000; // the pulse width, in microseconds, corresponding to the minimum (0-degree) angle on the throttle servo (defaults to 544)
 const int throttleMax = 2000; // the pulse width, in microseconds, corresponding to the maximum (180-degree) angle on the throttle servo (defaults to 2400)
-
-const int steering_speed = 25; // minimum number of milliseconds before evaluating the next steering step
 const int throttle_speed = 25; // minimum number of milliseconds before evaluation the next throttle step
-
-int steering_step = 3;  // how many degrees we turn each steering cycle
 int throttle_step = 3;  // how many degrees we move the throttle per cycle
-
-byte steering_pos = 90;  // desired angle for steering
 byte throttle_pos = 90;  // desired angle for throttle
 
 
@@ -50,9 +38,13 @@ const byte rightTrigPin = 5; // pin to trigger for right HC-SR04
 const byte rearTrigPin = 6; // pin to trigger for rear HC-SR04
 const byte echoPin = 7;    // pin we're listen to all the HC-SR04's on
 
+unsigned long frontInches;
+unsigned long leftInches;
+unsigned long rightInches;
+unsigned long rearInches;
+unsigned long duration;
+unsigned long distance;
 
-
-unsigned long duration, inches;
 
 /*
 The speed of sound is 0.0135039 inches per microsecond. Approx distance value
@@ -89,14 +81,19 @@ unsigned long timeout = measuringDistance * 12 * 74.052 * 2;
 
 void setup()
 {
-  pinMode(frontTrigPin, OUTPUT);
-  pinMode(leftTrigPin, OUTPUT);
-  pinMode(rightTrigPin, OUTPUT);
-  pinMode(rearTrigPin, OUTPUT);
+  Serial.begin(9600);
+
+  // the array elements are numbered from 0 to (pinCount - 1).
+  // use a for loop to initialize each pin as an output:
+  for (int thisPin = 0; thisPin < trigPins; thisPin++)
+  {
+    pinMode(trigArray[thisPin], OUTPUT);
+  }
+
   pinMode(echoPin, INPUT);
 
-  steering.attach(steeringPin);
-  throttle.attach(throttlePin);
+  steering.attach(steeringPin, steeringMin, steeringMax);
+  throttle.attach(throttlePin, throttleMin, throttleMax);
 
   // set the servos to center position and wait 5 seconds to arm ESM
 
@@ -104,9 +101,9 @@ void setup()
   // if so, does it need to be both the steering and throttle, or just the throttle?
   // if not, what happens to steering.read() when there is no set value?
 
-  steering.write(90); // servo center at 90 degrees. could use servo.writeMicroseconds(uS)
-  throttle.write(90); // servo center at 90 degrees. could use servo.writeMicroseconds(uS)
-  delayMicroseconds(5000); // TODO why would I use this instead of delay(5)?
+  steering.write(90); // servo center at 90 degrees.
+  throttle.write(90); // servo center at 90 degrees.
+  delayMicroseconds(5000);
 }
 
 /*
@@ -120,8 +117,8 @@ void setup()
 
 void loop()
 {
-  SensorPolling()
-  Navigation()
+  SensorPolling();
+  Navigation();
   ThrottleControl();
   SteeringControl();
 }
@@ -135,11 +132,38 @@ void loop()
 ╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝    ╚═╝      ╚═════╝ ╚══════╝╚══════╝╚═╝╚═╝  ╚═══╝ ╚═════╝
 */
 
-void SensorPolling()
+long SensorPolling()
 {
-  // TODO Finish SensorPolling
+
+  frontInches = dist(frontTrigPin);
+  Serial.print(frontInches);
+  Serial.println(" inches in front.");
+
+  leftInches = dist(leftTrigPin);
+  Serial.print(leftInches);
+  Serial.println(" inches to the left.");
+
+  rightInches = dist(rightTrigPin);
+  Serial.print(rightInches);
+  Serial.println(" inches to the right.");
+
+  rearInches = dist(rearTrigPin);
+  Serial.print(rearInches);
+  Serial.println(" inches behind.");
+
 }
 
+unsigned long dist(byte trigPin)
+{
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration/74.052/2;
+  return(distance);
+}
 
 /*
 ███╗   ██╗ █████╗ ██╗   ██╗██╗ ██████╗  █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
