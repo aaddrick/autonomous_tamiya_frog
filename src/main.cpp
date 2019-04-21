@@ -1,34 +1,10 @@
 #include <Servo.h> // include the arduino servo library.
 
-/*
-██╗   ██╗ █████╗ ██████╗ ██╗ █████╗ ██████╗ ██╗     ███████╗    ██████╗ ███████╗ ██████╗██╗      █████╗ ██████╗  █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
-██║   ██║██╔══██╗██╔══██╗██║██╔══██╗██╔══██╗██║     ██╔════╝    ██╔══██╗██╔════╝██╔════╝██║     ██╔══██╗██╔══██╗██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║
-██║   ██║███████║██████╔╝██║███████║██████╔╝██║     █████╗      ██║  ██║█████╗  ██║     ██║     ███████║██████╔╝███████║   ██║   ██║██║   ██║██╔██╗ ██║
-╚██╗ ██╔╝██╔══██║██╔══██╗██║██╔══██║██╔══██╗██║     ██╔══╝      ██║  ██║██╔══╝  ██║     ██║     ██╔══██║██╔══██╗██╔══██║   ██║   ██║██║   ██║██║╚██╗██║
- ╚████╔╝ ██║  ██║██║  ██║██║██║  ██║██████╔╝███████╗███████╗    ██████╔╝███████╗╚██████╗███████╗██║  ██║██║  ██║██║  ██║   ██║   ██║╚██████╔╝██║ ╚████║
-  ╚═══╝  ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚══════╝    ╚═════╝ ╚══════╝ ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
-*/
-
-
-// defining steering and throttle
-
 Servo steering; // for the Servo library, defining a steering servo
 Servo throttle; // for the Servo library, defining a throttle servo
 
-const byte steeringPin = 8;
-const int steeringMin = 1000; // the pulse width, in microseconds, corresponding to the minimum (0-degree) angle on the steering servo (defaults to 544)
-const int steeringMax = 2000; // the pulse width, in microseconds, corresponding to the maximum (180-degree) angle on the steering servo (defaults to 2400)
-const int steering_speed = 25; // minimum number of milliseconds before evaluating the next steering step
-int steering_step = 3;  // how many degrees we turn each steering cycle
-byte steering_pos = 90;  // desired angle for steering
-
-const byte throttlePin = 9;
-const int throttleMin = 1000; // the pulse width, in microseconds, corresponding to the minimum (0-degree) angle on the throttle servo (defaults to 544)
-const int throttleMax = 2000; // the pulse width, in microseconds, corresponding to the maximum (180-degree) angle on the throttle servo (defaults to 2400)
-const int throttle_speed = 25; // minimum number of milliseconds before evaluation the next throttle step
-int throttle_step = 3;  // how many degrees we move the throttle per cycle
-byte throttle_pos = 90;  // desired angle for throttle
-
+byte steering_pos;  // desired angle for steering between 0 and 180
+byte throttle_pos;  // desired angle for throttle between 0 and 180
 
 // defining HC-SR04 ultrasonic sensors
 
@@ -48,9 +24,9 @@ unsigned long distance;
 
 /*
 The speed of sound is 0.0135039 inches per microsecond. Approx distance value
-can be found by dividing pulseIn() time by 74.052 and dividing again by 2 to
-account for the ping having to travel out to an object and reflect back to the
-sensor.
+from HC-SR04 in inches can be found by dividing pulseIn() time by 74.052 and
+dividing again by 2 to account for the ping having to travel out to an object
+and reflect back to the sensor.
 
 Max distance for the HC-SR04 is 400cm or 157 inches.
 157 inches is 23,253 microseconds roundtrip (0.0232 seconds).
@@ -81,26 +57,31 @@ unsigned long timeout = measuringDistance * 12 * 74.052 * 2;
 
 void setup()
 {
-  Serial.begin(9600);
+  Serial.begin(9600); // Begin serial communication so we can monitor things
 
-  // the array elements are numbered from 0 to (pinCount - 1).
-  // use a for loop to initialize each pin as an output:
-  for (int thisPin = 0; thisPin < trigPins; thisPin++)
-  {
-    pinMode(trigArray[thisPin], OUTPUT);
-  }
+  pinMode(10, OUTPUT); // Front HC-SR04 Trigger Pin
+  pinMode(11, INPUT); // Front HC-SR04 Echo Pin
 
-  pinMode(echoPin, INPUT);
+  pinMode(2, OUTPUT); // Left HC-SR04 Trigger Pin
+  pinMode(3, INPUT); // Left HC-SR04 Echo Pin
 
-  steering.attach(steeringPin, steeringMin, steeringMax);
-  throttle.attach(throttlePin, throttleMin, throttleMax);
+  pinMode(4, OUTPUT); // Right HC-SR04 Trigger Pin
+  pinMode(5, INPUT); // Right HC-SR04 Echo Pin
 
-  // set the servos to center position and wait 5 seconds to arm ESM
+  pinMode(6, OUTPUT); // Rear HC-SR04 Trigger Pin
+  pinMode(7, INPUT); // Rear HC-SR04 Echo Pin
 
-  // TODO test whether or not the below chunk is needed specifically to arm the ESC.
-  // if so, does it need to be both the steering and throttle, or just the throttle?
-  // if not, what happens to steering.read() when there is no set value?
+  /*
+  servo.attach(pin, min, max)
+  pin = the pin the servo is connected to
+  min = the pulse width, in microseconds, corresponding to the minimum (0-degree) angle on the servo (defaults to 544)
+  max = the pulse width, in microseconds, corresponding to the maximum (180-degree) angle on the servo (defaults to 2400)
+  */
+  steering.attach(8, 1300, 2000);
+  throttle.attach(9, 1400, 1600);
 
+  // set the servos to neutral position and wait 5 milliseconds to arm ESC
+  // Only throttle requires neutral to arm, but it's nice pointing the wheels forward too
   steering.write(90); // servo center at 90 degrees.
   throttle.write(90); // servo center at 90 degrees.
   delayMicroseconds(5000);
@@ -190,17 +171,18 @@ void Navigation()
 
 void SteeringControl()
 {
-  static unsigned long steering_time; // placeholder for the last time steering updated.
+  static unsigned long time; // placeholder for the last time steering updated.
+  int cycle = 25; // minimum number of milliseconds before evaluation the next steering step
+  int step = 5; // how many degrees we move the throttle per cycle
 
-  if ((millis()-steering_time) >= steering_speed)
+  if ((millis()-time) >= cycle)
   {
-    steering_time = millis(); // save time reference for next position update
+    time = millis(); // save time reference for next position update
 
     // update steering position
     // if desired position is different from current position move one step left or right
-    // TODO is positive or negative left?
-    if (steering_pos > steering.read()) steering.write(steering.read() + steering_step);
-    else if (steering_pos < steering.read()) steering.write(steering.read() - steering_step);
+    if (steering_pos > steering.read()) steering.write(steering.read() + step);
+    else if (steering_pos < steering.read()) steering.write(steering.read() - step);
   }
 }
 
@@ -215,16 +197,35 @@ void SteeringControl()
 
 void ThrottleControl()
 {
-  static unsigned long throttle_time;  // placeholder for the last time throttle updated. Used in ThrottleControl()
+  static unsigned long time;  // placeholder for the last time throttle updated.
+  int cycle = 25; // minimum number of milliseconds before evaluation the next throttle step
+  int step = 3; // how many degrees we move the throttle per cycle
 
-  if ((millis()-throttle_time) >= throttle_speed)
+  if ((millis()-time) >= cycle)
   {
-    throttle_time = millis(); // save time reference for next position update
+    time = millis(); // save time reference for next position update
 
     // update throttle position
-    // if desired position is different from current position move one step faster or slower.
-    // TODO is positive or negative more throttle?
-    if (throttle_pos > throttle.read()) throttle.write(throttle.read() + throttle_step);
-    else if (throttle_pos < throttle.read()) throttle.write(throttle.read() - throttle_step);
+    // if desired position is different from current position increase or decrease throttle by one step
+    if (throttle_pos > throttle.read()) throttle.write(throttle.read() + step);
+    else if (throttle_pos < throttle.read()) throttle.write(throttle.read() - step);
   }
 }
+
+/*
+
+Steering - left low - right hig
+sttering min 1300
+steering max 2000
+
+Throttle
+throttle low reverse = 1600
+throttle full foward is 1470
+break range start
+break range stop
+
+
+
+
+
+*/
