@@ -6,22 +6,6 @@ Servo throttle; // for the Servo library, defining a throttle servo
 byte steering_pos;  // desired angle for steering between 0 and 180
 byte throttle_pos;  // desired angle for throttle between 0 and 180
 
-// defining HC-SR04 ultrasonic sensors
-
-const byte frontTrigPin = 3; // pin to trigger for front HC-SR04
-const byte leftTrigPin = 4; // pin to trigger for left HC-SR04
-const byte rightTrigPin = 5; // pin to trigger for right HC-SR04
-const byte rearTrigPin = 6; // pin to trigger for rear HC-SR04
-const byte echoPin = 7;    // pin we're listen to all the HC-SR04's on
-
-unsigned long frontInches;
-unsigned long leftInches;
-unsigned long rightInches;
-unsigned long rearInches;
-unsigned long duration;
-unsigned long distance;
-
-
 /*
 The speed of sound is 0.0135039 inches per microsecond. Approx distance value
 from HC-SR04 in inches can be found by dividing pulseIn() time by 74.052 and
@@ -41,35 +25,49 @@ there's nothing to reflect off of.
 // in feet, since it's easiest for me to think about.
 unsigned long measuringDistance = 5;
 
-// timeout for the pulseIn() function, lest we wait 1 second per reading if
-// nothing's around.
-// feet * convert to inches * convert to microseconds * double distance
+/*
+timeout for the pulseIn() function, lest we wait 1 second per reading if
+nothing's around.
+
+meauring distance in feet * convert to inches * convert to microseconds * double distance
+*/
+
 unsigned long timeout = measuringDistance * 12 * 74.052 * 2;
 
-/*
-███████╗███████╗████████╗██╗   ██╗██████╗
-██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗
-███████╗█████╗     ██║   ██║   ██║██████╔╝
-╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝
-███████║███████╗   ██║   ╚██████╔╝██║
-╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝
-*/
+const byte frontTrigPin = 10; // pin to trigger for front HC-SR04
+const byte frontEchoPin = 11; // pin to trigger for front HC-SR04
+
+const byte leftTrigPin = 2; // pin to trigger for left HC-SR04
+const byte leftEchoPin = 3; // pin to trigger for left HC-SR04
+
+const byte rightTrigPin = 4; // pin to trigger for right HC-SR04
+const byte rightEchoPin = 5; // pin to trigger for right HC-SR04
+
+const byte rearTrigPin = 6; // pin to trigger for rear HC-SR04
+const byte rearEchoPin = 7; // pin to trigger for rear HC-SR04
+
+struct localAreaStruct {
+  unsigned long front;
+  unsigned long left;
+  unsigned long right;
+  unsigned long rear;
+}
 
 void setup()
 {
   Serial.begin(9600); // Begin serial communication so we can monitor things
 
-  pinMode(10, OUTPUT); // Front HC-SR04 Trigger Pin
-  pinMode(11, INPUT); // Front HC-SR04 Echo Pin
+  pinMode(frontTrigPin, OUTPUT); // Front HC-SR04 Trigger Pin
+  pinMode(frontEchoPin, INPUT); // Front HC-SR04 Echo Pin
 
-  pinMode(2, OUTPUT); // Left HC-SR04 Trigger Pin
-  pinMode(3, INPUT); // Left HC-SR04 Echo Pin
+  pinMode(leftTrigPin, OUTPUT); // Left HC-SR04 Trigger Pin
+  pinMode(leftEchoPin, INPUT); // Left HC-SR04 Echo Pin
 
-  pinMode(4, OUTPUT); // Right HC-SR04 Trigger Pin
-  pinMode(5, INPUT); // Right HC-SR04 Echo Pin
+  pinMode(rightTrigPin, OUTPUT); // Right HC-SR04 Trigger Pin
+  pinMode(rightEchoPin, INPUT); // Right HC-SR04 Echo Pin
 
-  pinMode(6, OUTPUT); // Rear HC-SR04 Trigger Pin
-  pinMode(7, INPUT); // Rear HC-SR04 Echo Pin
+  pinMode(rearTrigPin, OUTPUT); // Rear HC-SR04 Trigger Pin
+  pinMode(rearEchoPin, INPUT); // Rear HC-SR04 Echo Pin
 
   /*
   servo.attach(pin, min, max)
@@ -77,65 +75,39 @@ void setup()
   min = the pulse width, in microseconds, corresponding to the minimum (0-degree) angle on the servo (defaults to 544)
   max = the pulse width, in microseconds, corresponding to the maximum (180-degree) angle on the servo (defaults to 2400)
   */
-  steering.attach(8, 1300, 2000);
-  throttle.attach(9, 1400, 1600);
+  steering.attach(8, 1300, 2000); // restricted to avoid banging into things and compensate for crooked steering linkage
+  throttle.attach(9, 1400, 1600); // esc calibrated at 1000 - 2000, restricted to keep it from going too fast
 
   // set the servos to neutral position and wait 5 milliseconds to arm ESC
   // Only throttle requires neutral to arm, but it's nice pointing the wheels forward too
   steering.write(90); // servo center at 90 degrees.
   throttle.write(90); // servo center at 90 degrees.
-  delayMicroseconds(5000);
+  delayMicroseconds(5000); // wait for .005 seconds
 }
-
-/*
-██╗      ██████╗  ██████╗ ██████╗
-██║     ██╔═══██╗██╔═══██╗██╔══██╗
-██║     ██║   ██║██║   ██║██████╔╝
-██║     ██║   ██║██║   ██║██╔═══╝
-███████╗╚██████╔╝╚██████╔╝██║
-╚══════╝ ╚═════╝  ╚═════╝ ╚═╝
-*/
 
 void loop()
 {
+  localAreaInstance localAreaStruct;
+
   SensorPolling();
   Navigation();
   ThrottleControl();
   SteeringControl();
 }
 
-/*
-███████╗███████╗███╗   ██╗███████╗ ██████╗ ██████╗     ██████╗  ██████╗ ██╗     ██╗     ██╗███╗   ██╗ ██████╗
-██╔════╝██╔════╝████╗  ██║██╔════╝██╔═══██╗██╔══██╗    ██╔══██╗██╔═══██╗██║     ██║     ██║████╗  ██║██╔════╝
-███████╗█████╗  ██╔██╗ ██║███████╗██║   ██║██████╔╝    ██████╔╝██║   ██║██║     ██║     ██║██╔██╗ ██║██║  ███╗
-╚════██║██╔══╝  ██║╚██╗██║╚════██║██║   ██║██╔══██╗    ██╔═══╝ ██║   ██║██║     ██║     ██║██║╚██╗██║██║   ██║
-███████║███████╗██║ ╚████║███████║╚██████╔╝██║  ██║    ██║     ╚██████╔╝███████╗███████╗██║██║ ╚████║╚██████╔╝
-╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝    ╚═╝      ╚═════╝ ╚══════╝╚══════╝╚═╝╚═╝  ╚═══╝ ╚═════╝
-*/
-
-long SensorPolling()
+void SensorPolling(localAreaInstance *measure)
 {
-
-  frontInches = dist(frontTrigPin);
-  Serial.print(frontInches);
-  Serial.println(" inches in front.");
-
-  leftInches = dist(leftTrigPin);
-  Serial.print(leftInches);
-  Serial.println(" inches to the left.");
-
-  rightInches = dist(rightTrigPin);
-  Serial.print(rightInches);
-  Serial.println(" inches to the right.");
-
-  rearInches = dist(rearTrigPin);
-  Serial.print(rearInches);
-  Serial.println(" inches behind.");
-
+  measure->front = dist(frontTrigPin);
+  measure->left = dist(leftTrigPin);
+  measure->right = dist(rightTrigPin);
+  measure->rear = dist(rearTrigPin);
 }
 
-unsigned long dist(byte trigPin)
+unsigned long dist(byte trigPin, byte echoPin)
 {
+  unsigned long duration;
+  unsigned long distance;
+
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
@@ -146,28 +118,11 @@ unsigned long dist(byte trigPin)
   return(distance);
 }
 
-/*
-███╗   ██╗ █████╗ ██╗   ██╗██╗ ██████╗  █████╗ ████████╗██╗ ██████╗ ███╗   ██╗
-████╗  ██║██╔══██╗██║   ██║██║██╔════╝ ██╔══██╗╚══██╔══╝██║██╔═══██╗████╗  ██║
-██╔██╗ ██║███████║██║   ██║██║██║  ███╗███████║   ██║   ██║██║   ██║██╔██╗ ██║
-██║╚██╗██║██╔══██║╚██╗ ██╔╝██║██║   ██║██╔══██║   ██║   ██║██║   ██║██║╚██╗██║
-██║ ╚████║██║  ██║ ╚████╔╝ ██║╚██████╔╝██║  ██║   ██║   ██║╚██████╔╝██║ ╚████║
-╚═╝  ╚═══╝╚═╝  ╚═╝  ╚═══╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
-*/
-
 void Navigation()
 {
   // Finish Navigation
-}
 
-/*
-███████╗████████╗███████╗███████╗██████╗ ██╗███╗   ██╗ ██████╗      ██████╗ ██████╗ ███╗   ██╗████████╗██████╗  ██████╗ ██╗
-██╔════╝╚══██╔══╝██╔════╝██╔════╝██╔══██╗██║████╗  ██║██╔════╝     ██╔════╝██╔═══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔═══██╗██║
-███████╗   ██║   █████╗  █████╗  ██████╔╝██║██╔██╗ ██║██║  ███╗    ██║     ██║   ██║██╔██╗ ██║   ██║   ██████╔╝██║   ██║██║
-╚════██║   ██║   ██╔══╝  ██╔══╝  ██╔══██╗██║██║╚██╗██║██║   ██║    ██║     ██║   ██║██║╚██╗██║   ██║   ██╔══██╗██║   ██║██║
-███████║   ██║   ███████╗███████╗██║  ██║██║██║ ╚████║╚██████╔╝    ╚██████╗╚██████╔╝██║ ╚████║   ██║   ██║  ██║╚██████╔╝███████╗
-╚══════╝   ╚═╝   ╚══════╝╚══════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝      ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
-*/
+}
 
 void SteeringControl()
 {
@@ -185,15 +140,6 @@ void SteeringControl()
     else if (steering_pos < steering.read()) steering.write(steering.read() - step);
   }
 }
-
-/*
-████████╗██╗  ██╗██████╗  ██████╗ ████████╗████████╗██╗     ███████╗     ██████╗ ██████╗ ███╗   ██╗████████╗██████╗  ██████╗ ██╗
-╚══██╔══╝██║  ██║██╔══██╗██╔═══██╗╚══██╔══╝╚══██╔══╝██║     ██╔════╝    ██╔════╝██╔═══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔═══██╗██║
-   ██║   ███████║██████╔╝██║   ██║   ██║      ██║   ██║     █████╗      ██║     ██║   ██║██╔██╗ ██║   ██║   ██████╔╝██║   ██║██║
-   ██║   ██╔══██║██╔══██╗██║   ██║   ██║      ██║   ██║     ██╔══╝      ██║     ██║   ██║██║╚██╗██║   ██║   ██╔══██╗██║   ██║██║
-   ██║   ██║  ██║██║  ██║╚██████╔╝   ██║      ██║   ███████╗███████╗    ╚██████╗╚██████╔╝██║ ╚████║   ██║   ██║  ██║╚██████╔╝███████╗
-   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝    ╚═╝      ╚═╝   ╚══════╝╚══════╝     ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
-*/
 
 void ThrottleControl()
 {
@@ -215,7 +161,7 @@ void ThrottleControl()
 /*
 
 Steering - left low - right hig
-sttering min 1300
+steering min 1300
 steering max 2000
 
 Throttle
