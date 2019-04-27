@@ -6,6 +6,7 @@ Servo throttle; // for the Servo library, defining a throttle servo
 byte steering_pos;  // desired angle for steering between 0 and 180
 byte throttle_pos;  // desired angle for throttle between 0 and 180
 
+bool goingForward = 1;
 /*
 The speed of sound is 0.0135039 inches per microsecond. Approx distance value
 from HC-SR04 in inches can be found by dividing pulseIn() time by 74.052 and
@@ -46,12 +47,13 @@ const byte rightEchoPin = 5; // pin to trigger for right HC-SR04
 const byte rearTrigPin = 6; // pin to trigger for rear HC-SR04
 const byte rearEchoPin = 7; // pin to trigger for rear HC-SR04
 
-struct localAreaStruct {
+struct sensorData {
   unsigned long front;
   unsigned long left;
   unsigned long right;
   unsigned long rear;
-}
+};
+
 
 void setup()
 {
@@ -87,20 +89,21 @@ void setup()
 
 void loop()
 {
-  localAreaInstance localAreaStruct;
+  sensorData data;
 
-  SensorPolling();
-  Navigation();
+  SensorPolling(data);
+  Navigation(data);
+  EnableReverse();
   ThrottleControl();
   SteeringControl();
 }
 
-void SensorPolling(localAreaInstance *measure)
+void SensorPolling(sensorData &data)
 {
-  measure->front = dist(frontTrigPin);
-  measure->left = dist(leftTrigPin);
-  measure->right = dist(rightTrigPin);
-  measure->rear = dist(rearTrigPin);
+  data.front = dist(frontTrigPin, frontEchoPin);
+  data.left = dist(leftTrigPin, leftEchoPin);
+  data.right = dist(rightTrigPin, rightEchoPin);
+  data.rear = dist(rearTrigPin, rearEchoPin);
 }
 
 unsigned long dist(byte trigPin, byte echoPin)
@@ -118,10 +121,29 @@ unsigned long dist(byte trigPin, byte echoPin)
   return(distance);
 }
 
-void Navigation()
+void Navigation(sensorData data)
 {
-  // Finish Navigation
+  int leftMap;
+  int rightMap;
 
+  int frontMap;
+  int rearMap;
+
+  // STEERING
+  leftMap = map(data.left, 0, measuringDistance, 90, 0); // convert left distance to a steering offset
+  rightMap = map(data.right, 0, measuringDistance, 90, 0); // convert right distance to a steering offset
+  if (goingForward==0) {
+    steering_pos = 90 + leftMap - rightMap; // steer backwards if you're in reverse
+  }
+  else{
+    steering_pos = 90 - leftMap + rightMap; // otherwise steer normally
+  }
+
+  //THROTTLE
+  frontMap = map(data.front, 0, measuringDistance, 80, 0); // convert left distance to a steering offset
+  rearMap = map(data.rear, 0, measuringDistance, 0, 90); // convert right distance to a steering offset
+
+  throttle_pos = 90 - frontMap + rearMap;
 }
 
 void SteeringControl()
@@ -158,20 +180,23 @@ void ThrottleControl()
   }
 }
 
-/*
-
-Steering - left low - right hig
-steering min 1300
-steering max 2000
-
-Throttle
-throttle low reverse = 1600
-throttle full foward is 1470
-break range start
-break range stop
+void EnableReverse()
+{
+  static unsigned long time; // placeholder for the last time steering updated.
 
 
+  if (throttle_pos > 1500) {
+    time = millis();
+    goingForward = 1;
+  }
+  else if (millis()-time > 200 && goingForward == 1)
+  {
+    goingForward = 0;
+    throttle.write(1500);
+    delay(0.1);
+    throttle.write(1000);
+    delay(0.1);
+    throttle.write(1500);
+  }
 
-
-
-*/
+}
