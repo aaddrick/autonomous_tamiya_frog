@@ -6,7 +6,7 @@ Servo throttle; // for the Servo library, defining a throttle servo
 byte steering_pos;  // desired angle for steering between 0 and 180
 byte throttle_pos;  // desired angle for throttle between 0 and 180
 
-bool goingForward = 1;
+int goingForward = 1;
 /*
 The speed of sound is 0.0135039 inches per microsecond. Approx distance value
 from HC-SR04 in inches can be found by dividing pulseIn() time by 74.052 and
@@ -23,8 +23,9 @@ there's nothing to reflect off of.
 */
 
 // measuringDistance is how far away we think obstacles are relevant.
-// in feet, since it's easiest for me to think about.
-unsigned long measuringDistance = 5;
+// in inches, since it's easiest for me to think about.
+unsigned long measuringDistance = 60;
+unsigned long measuringMargin = measuringDistance - 5;
 
 /*
 timeout for the pulseIn() function, lest we wait 1 second per reading if
@@ -33,7 +34,7 @@ nothing's around.
 meauring distance in feet * convert to inches * convert to microseconds * double distance
 */
 
-unsigned long timeout = measuringDistance * 12 * 74.052 * 2;
+unsigned long timeout = measuringDistance * 74.052 * 2;
 
 const byte frontTrigPin = 10; // pin to trigger for front HC-SR04
 const byte frontEchoPin = 11; // pin to trigger for front HC-SR04
@@ -71,20 +72,23 @@ void setup()
   pinMode(rearTrigPin, OUTPUT); // Rear HC-SR04 Trigger Pin
   pinMode(rearEchoPin, INPUT); // Rear HC-SR04 Echo Pin
 
+  pinMode(LED_BUILTIN, OUTPUT);
+
   /*
   servo.attach(pin, min, max)
   pin = the pin the servo is connected to
   min = the pulse width, in microseconds, corresponding to the minimum (0-degree) angle on the servo (defaults to 544)
   max = the pulse width, in microseconds, corresponding to the maximum (180-degree) angle on the servo (defaults to 2400)
   */
-  steering.attach(8, 1300, 2000); // restricted to avoid banging into things and compensate for crooked steering linkage
-  throttle.attach(9, 1400, 1600); // esc calibrated at 1000 - 2000, restricted to keep it from going too fast
+  steering.attach(8, 700, 1300); // restricted to avoid banging into things and compensate for crooked steering linkage
+  throttle.attach(9, 1425, 1510); // esc calibrated at 1000 - 2000, restricted to keep it from going too fast
 
   // set the servos to neutral position and wait 5 milliseconds to arm ESC
   // Only throttle requires neutral to arm, but it's nice pointing the wheels forward too
-  steering.write(90); // servo center at 90 degrees.
+  // steering.write(90); // servo center at 90 degrees.
+  steering.write(90);
   throttle.write(90); // servo center at 90 degrees.
-  delayMicroseconds(5000); // wait for .005 seconds
+  delay(2000); // wait for .005 seconds
 }
 
 void loop()
@@ -96,14 +100,31 @@ void loop()
   EnableReverse();
   ThrottleControl();
   SteeringControl();
+  // delay(1000);
 }
 
 void SensorPolling(sensorData &data)
 {
   data.front = dist(frontTrigPin, frontEchoPin);
+  Serial.println("front inches: ");
+  Serial.println(data.front);
+  Serial.println("");
+
+
   data.left = dist(leftTrigPin, leftEchoPin);
+  Serial.println("left inches: ");
+  Serial.println(data.left);
+  Serial.println("");
+
   data.right = dist(rightTrigPin, rightEchoPin);
+  Serial.println("right inches: ");
+  Serial.println(data.right);
+  Serial.println("");
+
   data.rear = dist(rearTrigPin, rearEchoPin);
+  Serial.println("rear inches: ");
+  Serial.println(data.rear);
+  Serial.println("");
 }
 
 unsigned long dist(byte trigPin, byte echoPin)
@@ -130,8 +151,8 @@ void Navigation(sensorData data)
   int rearMap;
 
   // STEERING
-  leftMap = map(data.left, 0, measuringDistance, 90, 0); // convert left distance to a steering offset
-  rightMap = map(data.right, 0, measuringDistance, 90, 0); // convert right distance to a steering offset
+  leftMap = map(data.left, 0, measuringDistance, 0, 90); // convert left distance to a steering offset
+  rightMap = map(data.right, 0, measuringDistance, 0, 90); // convert right distance to a steering offset
   if (goingForward==0) {
     steering_pos = 90 + leftMap - rightMap; // steer backwards if you're in reverse
   }
@@ -139,18 +160,28 @@ void Navigation(sensorData data)
     steering_pos = 90 - leftMap + rightMap; // otherwise steer normally
   }
 
-  //THROTTLE
-  frontMap = map(data.front, 0, measuringDistance, 80, 0); // convert left distance to a steering offset
-  rearMap = map(data.rear, 0, measuringDistance, 0, 90); // convert right distance to a steering offset
+frontMap = map(data.front, 0, measuringDistance, 0, 90);
+rearMap = map(data.rear, 0, measuringDistance, 0, 90);
 
-  throttle_pos = 90 - frontMap + rearMap;
+  if (data.front < measuringDistance && data.rear < measuringDistance) // is there something in front and something behind? 0
+  {
+    throttle_pos = 90 + frontMap + rearMap;
+  }
+  else if (data.front < measuringDistance && data.rear > measuringMargin) // is there something in front and nothing behind? -90
+  {
+    throttle_pos = 90 - frontMap;
+  }
+  else (data.front > measuringMargin && data.rear < measuringDistance); // is there nothing in front and something behind? +90
+  {
+    throttle_pos = 90 + rearMap;
+  }
 }
 
 void SteeringControl()
 {
   static unsigned long time; // placeholder for the last time steering updated.
-  int cycle = 25; // minimum number of milliseconds before evaluation the next steering step
-  int step = 5; // how many degrees we move the throttle per cycle
+  int cycle = 10; // minimum number of milliseconds before evaluation the next steering step
+  int step = 7; // how many degrees we move the throttle per cycle
 
   if ((millis()-time) >= cycle)
   {
@@ -160,6 +191,10 @@ void SteeringControl()
     // if desired position is different from current position move one step left or right
     if (steering_pos > steering.read()) steering.write(steering.read() + step);
     else if (steering_pos < steering.read()) steering.write(steering.read() - step);
+
+    Serial.println("Steering READ:");
+    Serial.println(steering.read());
+    Serial.println("");
   }
 }
 
@@ -167,7 +202,7 @@ void ThrottleControl()
 {
   static unsigned long time;  // placeholder for the last time throttle updated.
   int cycle = 25; // minimum number of milliseconds before evaluation the next throttle step
-  int step = 3; // how many degrees we move the throttle per cycle
+  int step = 10; // how many degrees we move the throttle per cycle
 
   if ((millis()-time) >= cycle)
   {
@@ -177,6 +212,12 @@ void ThrottleControl()
     // if desired position is different from current position increase or decrease throttle by one step
     if (throttle_pos > throttle.read()) throttle.write(throttle.read() + step);
     else if (throttle_pos < throttle.read()) throttle.write(throttle.read() - step);
+
+    Serial.println("Throttle READ:");
+    Serial.println(throttle.read());
+    Serial.println("");
+
+
   }
 }
 
@@ -185,18 +226,47 @@ void EnableReverse()
   static unsigned long time; // placeholder for the last time steering updated.
 
 
-  if (throttle_pos > 1500) {
+  if (throttle_pos > 86) {
     time = millis();
     goingForward = 1;
+    digitalWrite(LED_BUILTIN, LOW);
   }
-  else if (millis()-time > 200 && goingForward == 1)
+  else if (millis()-time > 3000 && goingForward == 1)
   {
     goingForward = 0;
-    throttle.write(1500);
-    delay(0.1);
-    throttle.write(1000);
-    delay(0.1);
-    throttle.write(1500);
+    digitalWrite(LED_BUILTIN, HIGH);
+    throttle.write(90);
+    delay(100);
+    throttle.write(0);
+    delay(100);
+    throttle.write(90);
+  }
+
+  if(goingForward == 1){
+    Serial.println("going forward");
+    Serial.println("Throttle Position:");
+    Serial.println(throttle_pos);
+    Serial.println("");
+    Serial.println("Steering Position:");
+    Serial.println(steering_pos);
+    Serial.println("~~~~~~~~~~~~~~");
+    Serial.println("");
+    Serial.println("");
+    Serial.println("");
+    Serial.println("");
+  }
+  else {
+    Serial.println("going backwards");
+    Serial.println("Throttle Position:");
+    Serial.println(throttle_pos);
+    Serial.println("");
+    Serial.println("Steering Position:");
+    Serial.println(steering_pos);
+    Serial.println("~~~~~~~~~~~~~~");
+    Serial.println("");
+    Serial.println("");
+    Serial.println("");
+    Serial.println("");
   }
 
 }
