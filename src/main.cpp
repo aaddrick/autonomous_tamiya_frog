@@ -3,7 +3,7 @@
 Servo steering;
 Servo throttle;
 
-const unsigned long maxDistance = 60; // in inches
+const unsigned long maxDistance = 40; // in inches
 bool goingForward = 1;
 
 const byte frontTrigPin = 10;
@@ -46,6 +46,8 @@ void setup()
   steering.write(90);
   throttle.write(90);
   delay(2000);
+
+  Serial.begin(9600);
 }
 
 void loop()
@@ -55,17 +57,38 @@ void loop()
   SensorPolling(data);
   ThrottleControl(data);
   SteeringControl(data);
+
+  Serial.println(throttle.read());
+  Serial.print(" ");
+ // Serial.println(steering.read());
+  //Serial.print(" ");
 }
 
 void SensorPolling(sensorData &data)
 {
   data.front = dist(frontTrigPin, frontEchoPin);
+  if (data.front == 0) {
+    data.front = maxDistance;
+  }
 
   data.left = dist(leftTrigPin, leftEchoPin);
+  if (data.left == 0) {
+    data.left = maxDistance;
+  }
 
   data.right = dist(rightTrigPin, rightEchoPin);
+  if (data.right == 0) {
+    data.right = maxDistance;
+  }
 
   data.rear = dist(rearTrigPin, rearEchoPin);
+  if (data.rear == 0) {
+    data.rear = maxDistance;
+  }
+
+  //Serial.println(data.rear);
+  //Serial.print(" ");
+
 }
 
 
@@ -115,7 +138,7 @@ void SteeringControl(sensorData data)
 
   static unsigned long time; // placeholder for the last time steering updated.
   int cycle = 10; // minimum number of milliseconds before evaluation the next steering step
-  int step = 7; // how many degrees we move the throttle per cycle
+  int step = 3; // how many degrees we move the throttle per cycle
 
   if ((millis()-time) >= cycle)
   {
@@ -135,7 +158,7 @@ void ThrottleControl(sensorData data)
 
   static unsigned long reverseTime;
 
-  if (throttle_pos > 90) {
+  if (throttle.read() > 90) {
     reverseTime = millis();
     goingForward = 1;
   }
@@ -153,16 +176,16 @@ void ThrottleControl(sensorData data)
 
 
 
-  int throttleDown = map(data.front, 0, maxDistance, -90, 0);
-  int throttleUp = map(data.rear, 0, maxDistance, 0, 90);
+  int throttleDown = map(data.front, 0, maxDistance, -25, 0);
+ // int throttleUp = map(data.rear, 0, maxDistance, 90, 45);
 
-  throttle_pos = 90 + throttleDown + throttleUp;
+  throttle_pos = 115 + throttleDown; //+ throttleUp;
 
 
 
   static unsigned long time;  // placeholder for the last time throttle updated.
-  int cycle = 25; // minimum number of milliseconds before evaluation the next throttle step
-  int step = 10; // how many degrees we move the throttle per cycle
+  int cycle = 50; // minimum number of milliseconds before evaluation the next throttle step
+  int step = 1; // how many degrees we move the throttle per cycle
 
   if ((millis()-time) >= cycle)
   {
@@ -172,6 +195,5 @@ void ThrottleControl(sensorData data)
     // if desired position is different from current position increase or decrease throttle by one step
     if (throttle_pos > throttle.read()) throttle.write(throttle.read() + step);
     else if (throttle_pos < throttle.read()) throttle.write(throttle.read() - step);
-
   }
 }
